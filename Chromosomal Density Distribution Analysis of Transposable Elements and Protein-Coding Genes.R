@@ -1,55 +1,54 @@
-
 ##################################################
 library(tidyverse)
 library(cowplot)
 
-# 读取数据
+# Read data
 all_data1 <- list.files(pattern = "*.merged_100windows.txt") %>% 
   map_df(~read_tsv(.x) %>% 
            group_by(species) %>% 
            mutate(window_id = row_number()))
 
-# 为每个物种创建图形
+# Create plots for each species
 plot_list <- map(unique(all_data1$species), ~{
   current_species <- .x
   sp_data <- filter(all_data1, species == current_species)
   
-  # 计算比例因子
+  # Calculate scaling factors
   max_gene <- max(sp_data$gene_count)
   max_te <- max(sp_data$te_count)
   ratio <- max_gene / max_te
   
   ggplot(sp_data, aes(x = window_id)) +
-    # 趋势线
+    # Trend lines
     geom_line(aes(y = gene_count, color = "Gene Count"), size = 0.6) +
     geom_line(aes(y = te_count * ratio, color = "TE Count"), size = 0.6) +
     
-    # 坐标轴设置
+    # Axis settings
     scale_x_continuous(
       name = "Window Sequence",
-      breaks = seq(0, max(sp_data$window_id), by = 20),  # 每20窗口显示一个刻度
-      expand = c(0.02, 0.02)  # 减少边缘空白
+      breaks = seq(0, max(sp_data$window_id), by = 20),  # Show tick every 20 windows
+      expand = c(0.02, 0.02)  # Reduce margins
     ) +
     scale_y_continuous(
       name = "Gene Count",
       sec.axis = sec_axis(~./ratio, name = "TE Count"),
-      breaks = scales::pretty_breaks(n = 4),  # 自动生成4个主要刻度
+      breaks = scales::pretty_breaks(n = 4),  # Auto generate 4 major ticks
       expand = c(0.05, 0.05)
     ) +
     
-    # 颜色设置
+    # Color settings
     scale_color_manual(
       values = c("Gene Count" = "#1b9e77", "TE Count" = "#d95f02")
     ) +
     
-    # 主题设置
+    # Theme settings
     theme_minimal(base_size = 9) +
     theme(
       plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
       panel.border = element_rect(color = "grey70", fill = NA, size = 0.3),
       panel.grid.major = element_line(color = "grey90", linewidth = 0.2),
       panel.grid.minor = element_blank(),
-      axis.title.x = element_text(margin = margin(t = 5)),  # X轴上边距
+      axis.title.x = element_text(margin = margin(t = 5)),  # Top margin for X-axis
       axis.title.y.left = element_text(color = "#1b9e77", margin = margin(r = 6)),
       axis.title.y.right = element_text(color = "#d95f02", margin = margin(l = 6)),
       axis.ticks = element_line(color = "grey60", size = 0.3),
@@ -60,11 +59,11 @@ plot_list <- map(unique(all_data1$species), ~{
     labs(title = current_species)
 })
 
-# 组合图形
+# Combine plots
 final_plot <- plot_grid(
   plotlist = plot_list,
   ncol = 2,
-  align = "hv",  # 确保坐标轴对齐
+  align = "hv",  # Ensure axis alignment
   axis = "tblr",
   labels = "AUTO",
   label_size = 10,
@@ -72,75 +71,63 @@ final_plot <- plot_grid(
   label_y = 0.95
 ) 
 final_plot
-# 保存高清图片
+# Save high-quality image
 ggsave("gene_te_final_plot.pdf", final_plot, width = 28, height = 24, units = "cm")
 
-
-
-
-
-
-
-
-
-#################################
-library(tidyverse)
-library(cowplot)
-
 # --------------------------
-# 数据读取与预处理模块
+# Data Reading and Preprocessing Module
 # --------------------------
 
-# 验证文件存在性
+# Verify file existence
 data_files <- list.files(pattern = "*merged_100windows.txt$")
-if(length(data_files) == 0) stop("未找到输入文件，请确认：
-1. 工作目录是否正确（当前目录：", getwd(), "）
-2. 文件名是否包含'merged_100windows.txt'后缀")
+if(length(data_files) == 0) stop("No input files found. Please confirm:
+1. Correct working directory? (Current: ", getwd(), ")
+2. Files contain 'merged_100windows.txt' suffix")
 
-# 安全读取数据
+# Safely read data
 all_data <- map_df(data_files, ~{
   tryCatch({
     df <- read_tsv(.x, show_col_types = FALSE) %>%
       group_by(species) %>%
-      mutate(window_id = row_number())  # 添加顺序窗口编号
+      mutate(window_id = row_number())  # Add sequential window IDs
     
-    # 数据完整性验证
+    # Data validation
     required_cols <- c("chr", "start", "end", "gene_count", "te_count", "species")
     if(!all(required_cols %in% names(df))) {
-      stop("文件", .x, "缺少必要列：", 
+      stop("File ", .x, " missing required columns: ", 
            paste(setdiff(required_cols, names(df)), collapse = ", "))
     }
     df
   }, error = function(e) {
-    message("处理文件", .x, "时出错：", e$message)
+    message("Error processing file ", .x, ": ", e$message)
     NULL
   })
 })
 
-# 验证数据内容
-if(nrow(all_data) == 0) stop("所有文件读取失败，请检查文件格式")
-print(str(all_data))  # 打印数据结构
+# Validate data content
+if(nrow(all_data) == 0) stop("All files failed to load. Please check file formats")
+print(str(all_data))  # Print data structure
 
 # --------------------------
-# 图形生成模块
+# Plot Generation Module
 # --------------------------
 
-# 创建输出目录
+# Create output directory
 output_dir <- "Species_Plots"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
-# 定义标准化绘图函数
+# Define standardized plotting function
 create_species_plot <- function(sp) {
   sp_data <- all_data %>%
     filter(species == sp) %>%
-    arrange(window_id)  # 确保窗口顺序
+    arrange(window_id)  # Ensure window order
   
-  # 计算比例因子
+  # Calculate scaling factors
   gene_max <- max(sp_data$gene_count, na.rm = TRUE)
   te_max <- max(sp_data$te_count, na.rm = TRUE)
-  ratio <- ifelse(te_max == 0, 1, gene_max / te_max)  # 防止除零错误
+  ratio <- ifelse(te_max == 0, 1, gene_max / te_max)  # Prevent division by zero
   
-  # 核心绘图逻辑
+  # Core plotting logic
   ggplot(sp_data, aes(x = window_id)) +
     geom_line(aes(y = gene_count, color = "Gene"), linewidth = 0.8) +
     geom_line(aes(y = te_count * ratio, color = "TE"), linewidth = 0.8) +
@@ -181,27 +168,27 @@ create_species_plot <- function(sp) {
 }
 
 # --------------------------
-# 批量输出模块
+# Batch Output Module
 # --------------------------
 
-# 获取有效物种列表
+# Get valid species list
 valid_species <- unique(all_data$species)
-if(length(valid_species) == 0) stop("数据中未找到有效物种信息")
+if(length(valid_species) == 0) stop("No valid species found in the data")
 
-# 生成并保存图形
+# Generate and save plots
 walk(valid_species, ~{
   sp <- .x
-  message("正在处理物种：", sp)
+  message("Processing species: ", sp)
   
-  # 生成图形
+  # Generate plot
   plot <- tryCatch({
     create_species_plot(sp)
   }, error = function(e) {
-    message(sp, "图形生成失败：", e$message)
+    message("Plot generation failed for ", sp, ": ", e$message)
     NULL
   })
   
-  # 安全保存输出
+  # Safely save output
   if(!is.null(plot)) {
     filename <- file.path(output_dir, paste0(gsub("[^[:alnum:]]", "_", sp), ".pdf"))
     
@@ -214,8 +201,8 @@ walk(valid_species, ~{
       units = "cm",
       dpi = 300
     )
-    message("成功保存：", filename)
+    message("Successfully saved: ", filename)
   }
 })
 
-message("处理完成！输出目录：", normalizePath(output_dir))
+message("Processing complete! Output directory: ", normalizePath(output_dir))
